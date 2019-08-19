@@ -87,8 +87,37 @@ clib_error_t *
 set_node_tap_mirror_fn (vlib_main_t * vm,
     unformat_input_t * input, vlib_cli_command_t * cmd)
 {
-  printf("SLANKDEV: %s\n", __func__);
+  unformat_input_t _line_input, *line_input = &_line_input;
+
+  char *node_name = NULL;
+  char *tap_name = NULL;
+  bool is_reset = false;
+  if (unformat_user (input, unformat_line_input, line_input)) {
+    while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT) {
+      if (false) ;
+      else if (unformat (line_input, "node %s", &node_name)) ;
+      else if (unformat (line_input, "tap %s", &tap_name)) ;
+      else if (unformat (line_input, "reset")) is_reset = true;
+
+      else {
+        unformat_free (line_input);
+        return clib_error_return (0, "unknown input `%U'",
+          format_unformat_error, input);
+      }
+    }
+    unformat_free (line_input);
+  }
+
+  vlib_cli_output (vm, "[%s]\n", __func__);
+  vlib_cli_output (vm, " node: %s\n", node_name);
+  vlib_cli_output (vm, " tap: %s\n", tap_name);
+  vlib_cli_output (vm, " reset: %s\n", is_reset ? "true" : "false");
+
   clib_error_t *err = NULL;
+  if (node_name)
+    vec_free(node_name);
+  if (tap_name)
+    vec_free(tap_name);
   return err;
 }
 
