@@ -83,3 +83,10 @@ show_tap_inject_fn (vlib_main_t * vm, unformat_input_t * input,
   return 0;
 }
 
+clib_error_t *
+enable_disable_tap_inject_cmd_fn (vlib_main_t * vm, unformat_input_t * input,
+                 vlib_cli_command_t * cmd)
+{
+  return 0;
+}
+

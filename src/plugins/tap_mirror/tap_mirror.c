@@ -119,15 +119,8 @@ set_node_tap_mirror_fn (vlib_main_t * vm,
   return err;
 }
 
-static clib_error_t *
-enable_disable_tap_inject_cmd_fn (vlib_main_t * vm, unformat_input_t * input,
-                 vlib_cli_command_t * cmd)
-{
-  return 0;
-}
-
 static uint64_t
-tap_inject_tx (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * f)
+tap_mirror_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * f)
 {
   printf("SLANKDEV: %s\n", __func__);
   uint32_t* pkts = vlib_frame_vector_args (f);
@@ -148,6 +141,13 @@ VLIB_PLUGIN_REGISTER () =
 {
   .version = VPP_BUILD_VER,
   .description = "tap_mirror plugin for operational debug",
+};
+
+VLIB_REGISTER_NODE (tap_mirror_node) = {
+  .function = tap_mirror_input_fn,
+  .name = "tap-mirror-input",
+  .vector_size = sizeof (uint32_t),
+  .type = VLIB_NODE_TYPE_INTERNAL,
 };
 
 VLIB_CLI_COMMAND (set_node_tap_mirror, static) = {
@@ -174,12 +174,5 @@ VLIB_CLI_COMMAND (show_tap_inject_cmd, static) = {
   .path = "show tap-inject",
   .short_help = "show tap-inject",
   .function = show_tap_inject_fn,
-};
-
-VLIB_REGISTER_NODE (tap_mirror_node) = {
-  .function = tap_inject_tx,
-  .name = "tap_mirror-tap-inject-tx",
-  .vector_size = sizeof (uint32_t),
-  .type = VLIB_NODE_TYPE_INTERNAL,
 };
 
