@@ -110,15 +110,6 @@ tap_mirror_init (vlib_main_t *vm)
   return NULL;
 }
 
-static clib_error_t *
-set_node_tap_mirror_fn (vlib_main_t * vm,
-    unformat_input_t * input, vlib_cli_command_t * cmd)
-{
-  printf("SLANKDEV: %s\n", __func__);
-  clib_error_t *err = NULL;
-  return err;
-}
-
 static uint64_t
 tap_mirror_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * f)
 {
@@ -151,28 +142,14 @@ VLIB_REGISTER_NODE (tap_mirror_node) = {
 };
 
 VLIB_CLI_COMMAND (set_node_tap_mirror, static) = {
-  .path = "set node <node-name> tap-mirror <tap-name> [del]",
-  .short_help ="setting up tap-mirror for  cplane-netdev {id <if-id>} [name <name>]",
+  .path = "set node tap-mirror",
+  .short_help = "set node tap-mirror <node-name> <tap-name> [reset]",
   .function = set_node_tap_mirror_fn,
 };
 
-VLIB_CLI_COMMAND (enable_tap_inject_cmd, static) = {
-  .path = "enable tap-inject",
-  .short_help ="enable tap-inject",
-  .function = enable_disable_tap_inject_cmd_fn,
-  .function_arg = 1,
-};
-
-VLIB_CLI_COMMAND (disable_tap_inject_cmd, static) = {
-  .path = "disable tap-inject",
-  .short_help ="disable tap-inject",
-  .function = enable_disable_tap_inject_cmd_fn,
-  .function_arg = 0,
-};
-
 VLIB_CLI_COMMAND (show_tap_inject_cmd, static) = {
-  .path = "show tap-inject",
-  .short_help = "show tap-inject",
-  .function = show_tap_inject_fn,
+  .path = "show tap-mirror",
+  .short_help = "show tap-mirror",
+  .function = show_tap_mirror_fn,
 };
 

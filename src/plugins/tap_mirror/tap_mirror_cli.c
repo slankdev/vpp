@@ -66,7 +66,7 @@
 #undef vl_msg_name_crc_list
 
 clib_error_t *
-show_tap_inject_fn (vlib_main_t * vm, unformat_input_t * input,
+show_tap_mirror_fn (vlib_main_t * vm, unformat_input_t * input,
                  vlib_cli_command_t * cmd)
 {
   if (tap_inject_is_config_disabled ()) {
@@ -84,9 +84,11 @@ show_tap_inject_fn (vlib_main_t * vm, unformat_input_t * input,
 }
 
 clib_error_t *
-enable_disable_tap_inject_cmd_fn (vlib_main_t * vm, unformat_input_t * input,
-                 vlib_cli_command_t * cmd)
+set_node_tap_mirror_fn (vlib_main_t * vm,
+    unformat_input_t * input, vlib_cli_command_t * cmd)
 {
-  return 0;
+  printf("SLANKDEV: %s\n", __func__);
+  clib_error_t *err = NULL;
+  return err;
 }
 
