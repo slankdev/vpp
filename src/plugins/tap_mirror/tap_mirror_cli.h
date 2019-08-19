@@ -1,7 +1,5 @@
 /*
- * cplane_netdev.api - binary API cplane_netdev plugin
- *
- * Copyright (c) 2019 Hiroki Shirokrua
+ * Copyright (c) 2019 Hiroki Shirokura
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at:
@@ -13,14 +11,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef __included_tap_mirror_cli_h__
+#define __included_tap_mirror_cli_h__
 
-/**
- * @file cplane_netdev.api
- * @brief VPP control-plane netdev API messages.
- * This file defines VPP control-plane binary API messages which are generally
- * called through a shared memory interface.
- */
+#include <vnet/vnet.h>
+#include <vnet/ip/ip.h>
+#include <vnet/ethernet/ethernet.h>
+#include <vppinfra/hash.h>
+#include <vppinfra/error.h>
 
-/* Version and type recitations */
-option version = "0.0.0";
+clib_error_t *
+show_tap_inject_fn (vlib_main_t * vm, unformat_input_t * input,
+                 vlib_cli_command_t * cmd);
 
+#endif /* __included_tap_mirror_cli_h__ */

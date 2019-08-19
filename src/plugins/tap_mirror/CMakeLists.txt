@@ -14,6 +14,8 @@ add_vpp_plugin(tap_mirror
   SOURCES
   tap_mirror.c
   tap_mirror.h
+  tap_mirror_cli.c
+  tap_mirror_cli.h
 
   API_FILES
   tap_mirror.api

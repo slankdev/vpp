@@ -67,6 +67,8 @@
 #include <tap_mirror/tap_mirror_all_api_h.h>
 #undef vl_msg_name_crc_list
 
+#include <tap_mirror/tap_mirror_cli.h>
+
 vlib_node_registration_t tap_mirror_node;
 
 static tap_mirror_main_t *
@@ -76,7 +78,7 @@ tap_mirror_get_main(void)
   return &tap_mirror_main;
 }
 
-static int
+int
 tap_inject_is_enabled (void)
 {
   printf("SLANKDEV: %s\n", __func__);
@@ -84,7 +86,7 @@ tap_inject_is_enabled (void)
   return !!(im->flags & TAP_MIRROR_F_ENABLED);
 }
 
-static int
+int
 tap_inject_is_config_disabled (void)
 {
   printf("SLANKDEV: %s\n", __func__);
@@ -121,24 +123,6 @@ static clib_error_t *
 enable_disable_tap_inject_cmd_fn (vlib_main_t * vm, unformat_input_t * input,
                  vlib_cli_command_t * cmd)
 {
-  return 0;
-}
-
-static clib_error_t *
-show_tap_inject (vlib_main_t * vm, unformat_input_t * input,
-                 vlib_cli_command_t * cmd)
-{
-  if (tap_inject_is_config_disabled ()) {
-    vlib_cli_output (vm, "tap-inject is disabled in config.\n");
-    return 0;
-  }
-
-  if (!tap_inject_is_enabled ()) {
-    vlib_cli_output (vm, "tap-inject is not enabled.\n");
-    return 0;
-  }
-
-  printf("SLANKDEV: %s\n", __func__);
   return 0;
 }
 
@@ -189,7 +173,7 @@ VLIB_CLI_COMMAND (disable_tap_inject_cmd, static) = {
 VLIB_CLI_COMMAND (show_tap_inject_cmd, static) = {
   .path = "show tap-inject",
   .short_help = "show tap-inject",
-  .function = show_tap_inject,
+  .function = show_tap_inject_fn,
 };
 
 VLIB_REGISTER_NODE (tap_mirror_node) = {

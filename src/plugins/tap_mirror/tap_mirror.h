@@ -35,4 +35,7 @@ typedef struct {
   uint32_t original_node_index;
 } tap_mirror_main_t;
 
+int tap_inject_is_config_disabled (void);
+int tap_inject_is_enabled (void);
+
 #endif /* __included_tap_mirror_h__ */
