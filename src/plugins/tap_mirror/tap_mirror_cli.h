@@ -22,7 +22,7 @@
 
 clib_error_t *show_tap_mirror_fn (vlib_main_t * vm,
   unformat_input_t * input, vlib_cli_command_t * cmd);
-clib_error_t *set_node_tap_mirror_fn (vlib_main_t * vm,
+clib_error_t *set_tap_mirror_fn (vlib_main_t * vm,
   unformat_input_t * input, vlib_cli_command_t * cmd);
 
 #endif /* __included_tap_mirror_cli_h__ */

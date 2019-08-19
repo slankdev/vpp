@@ -84,7 +84,7 @@ show_tap_mirror_fn (vlib_main_t * vm, unformat_input_t * input,
 }
 
 clib_error_t *
-set_node_tap_mirror_fn (vlib_main_t * vm,
+set_tap_mirror_fn (vlib_main_t * vm,
     unformat_input_t * input, vlib_cli_command_t * cmd)
 {
   unformat_input_t _line_input, *line_input = &_line_input;
@@ -108,16 +108,25 @@ set_node_tap_mirror_fn (vlib_main_t * vm,
     unformat_free (line_input);
   }
 
-  vlib_cli_output (vm, "[%s]\n", __func__);
-  vlib_cli_output (vm, " node: %s\n", node_name);
-  vlib_cli_output (vm, " tap: %s\n", tap_name);
-  vlib_cli_output (vm, " reset: %s\n", is_reset ? "true" : "false");
+  if (!node_name || !tap_name) {
+    if (node_name) vec_free(node_name);
+    if (tap_name) vec_free(tap_name);
+    return clib_error_return (0, "failed: specify both node-name and tap-name");
+  }
 
-  clib_error_t *err = NULL;
-  if (node_name)
-    vec_free(node_name);
-  if (tap_name)
-    vec_free(tap_name);
-  return err;
+  if (0 /* debug code */) {
+    vlib_cli_output (vm, "[%s]\n", __func__);
+    vlib_cli_output (vm, " node: %s\n", node_name);
+    vlib_cli_output (vm, " tap: %s\n", tap_name);
+    vlib_cli_output (vm, " reset: %s\n", is_reset ? "true" : "false");
+  }
+
+  int ret = set_tap_mirror(node_name, tap_name);
+  if (ret < 0)
+    return clib_error_return (0, "set_tap_mirro failed");
+
+  vec_free(node_name);
+  vec_free(tap_name);
+  return NULL;
 }
 

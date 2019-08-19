@@ -144,7 +144,7 @@ VLIB_REGISTER_NODE (tap_mirror_node) = {
 VLIB_CLI_COMMAND (set_node_tap_mirror, static) = {
   .path = "set tap-mirror",
   .short_help = "set tap-mirror {node <node-name>} {tap <tap-name>} [reset]",
-  .function = set_node_tap_mirror_fn,
+  .function = set_tap_mirror_fn,
 };
 
 VLIB_CLI_COMMAND (show_tap_inject_cmd, static) = {

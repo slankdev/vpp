@@ -37,5 +37,7 @@ typedef struct {
 
 int tap_inject_is_config_disabled (void);
 int tap_inject_is_enabled (void);
+inline static int set_tap_mirror(const char *node_name, const char *tap_name) { return 0; }
+
 
 #endif /* __included_tap_mirror_h__ */
