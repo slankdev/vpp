@@ -66,26 +66,22 @@
 #undef vl_msg_name_crc_list
 
 clib_error_t *
-show_tap_mirror_fn (vlib_main_t * vm, unformat_input_t * input,
-                 vlib_cli_command_t * cmd)
+show_tap_mirror_fn (vlib_main_t *vm, unformat_input_t *input,
+                 vlib_cli_command_t *cmd)
 {
-  if (tap_inject_is_config_disabled ()) {
-    vlib_cli_output (vm, "tap-inject is disabled in config.\n");
+  if (!tap_mirror_is_enabled())
     return 0;
-  }
 
-  if (!tap_inject_is_enabled ()) {
-    vlib_cli_output (vm, "tap-inject is not enabled.\n");
-    return 0;
-  }
-
-  printf("SLANKDEV: %s\n", __func__);
+  vlib_cli_output(vm, "\n");
+  vlib_cli_output(vm, "node: %s (org_index=%u, cur_index=%u)\n", "slnk", 0, 0);
+  vlib_cli_output(vm, "tap: %s (ifindex=%u)\n", "hiro");
+  vlib_cli_output(vm, "\n");
   return 0;
 }
 
 clib_error_t *
-set_tap_mirror_fn (vlib_main_t * vm,
-    unformat_input_t * input, vlib_cli_command_t * cmd)
+set_tap_mirror_fn (vlib_main_t *vm,
+    unformat_input_t *input, vlib_cli_command_t *cmd)
 {
   unformat_input_t _line_input, *line_input = &_line_input;
 

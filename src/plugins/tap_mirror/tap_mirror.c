@@ -71,7 +71,7 @@
 
 vlib_node_registration_t tap_mirror_node;
 
-static tap_mirror_main_t *
+tap_mirror_main_t *
 tap_mirror_get_main(void)
 {
   static tap_mirror_main_t tap_mirror_main;
@@ -79,19 +79,10 @@ tap_mirror_get_main(void)
 }
 
 int
-tap_inject_is_enabled (void)
+tap_mirror_is_enabled (void)
 {
-  printf("SLANKDEV: %s\n", __func__);
-  tap_mirror_main_t * im = tap_mirror_get_main ();
-  return !!(im->flags & TAP_MIRROR_F_ENABLED);
-}
-
-int
-tap_inject_is_config_disabled (void)
-{
-  printf("SLANKDEV: %s\n", __func__);
-  tap_mirror_main_t * im = tap_mirror_get_main ();
-  return !!(im->flags & TAP_MIRROR_F_CONFIG_DISABLE);
+  tap_mirror_main_t * xm = tap_mirror_get_main ();
+  return !!(xm->flags & TAP_MIRROR_F_ENABLED);
 }
 
 static clib_error_t *
