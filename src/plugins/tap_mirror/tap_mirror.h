@@ -24,18 +24,20 @@ typedef struct {
   uint16_t msg_id_base;
   vlib_main_t *vlib_main;
   vnet_main_t *vnet_main;
-  ethernet_main_t *ethernet_main;
 
 #define TAP_MIRROR_F_ENABLED        (1U << 0)
   uint32_t flags;
 
+  char node_name[256];
+  char tap_name[256];
   uint32_t mirror_node_index;
-  uint32_t original_node_index;
+  // uint32_t original_node_index;
 } tap_mirror_main_t;
 
 tap_mirror_main_t *tap_mirror_get_main(void);
 int tap_mirror_is_enabled (void);
-inline static int set_tap_mirror(const char *node_name, const char *tap_name) { return 0; }
+int set_tap_mirror(vlib_main_t *vm,
+  const char *node_name, const char *tap_name);
 
 
 #endif /* __included_tap_mirror_h__ */

@@ -81,8 +81,26 @@ tap_mirror_get_main(void)
 int
 tap_mirror_is_enabled (void)
 {
-  tap_mirror_main_t * xm = tap_mirror_get_main ();
+  tap_mirror_main_t *xm = tap_mirror_get_main();
   return !!(xm->flags & TAP_MIRROR_F_ENABLED);
+}
+
+int
+set_tap_mirror(vlib_main_t *vm,
+  const char *node_name, const char *tap_name)
+{
+  if (tap_mirror_is_enabled()) {
+    vlib_cli_output (vm, "%s: failed. already enabled\n", __func__);
+    return -1;
+  }
+
+  tap_mirror_main_t *xm = tap_mirror_get_main();
+  xm->flags |= TAP_MIRROR_F_ENABLED;
+  snprintf(xm->node_name, sizeof(xm->node_name), "%s", node_name);
+  snprintf(xm->tap_name, sizeof(xm->tap_name), "%s", tap_name);
+
+  /* printf("SLANKDEV: %s\n", __func__); */
+  return 0;
 }
 
 static clib_error_t *
