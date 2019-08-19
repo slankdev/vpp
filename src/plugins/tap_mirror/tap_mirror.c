@@ -171,9 +171,11 @@ static uint64_t
 tap_mirror_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * f)
 {
   printf("SLANKDEV: %s\n", __func__);
-  uint32_t* pkts = vlib_frame_vector_args (f);
-  vlib_buffer_free (vm, pkts, f->n_vectors);
-  return f->n_vectors;
+  // KOKO
+  /* uint32_t* pkts = vlib_frame_vector_args (f); */
+  /* vlib_buffer_free (vm, pkts, f->n_vectors); */
+  tap_mirror_main_t *xm = tap_mirror_get_main();
+  return xm->target_fn(vm, node, f);
 }
 
 int
@@ -203,8 +205,7 @@ enable_tap_mirror(vlib_main_t *vm,
       vlib_node_get_runtime(vlib_get_main(), node->index);
   assert(runtime);
   xm->target_fn = runtime->function;
-  runtime->function = tap_mirror_input_fn; // KOKO
-  runtime->function = xm->target_fn;
+  runtime->function = tap_mirror_input_fn;
 
   assert(xm->tap_fd <= 0);
   xm->tap_fd = open_tap_fd(tap_name);
