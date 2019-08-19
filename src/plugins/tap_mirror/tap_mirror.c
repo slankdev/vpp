@@ -66,10 +66,7 @@
 #define vl_msg_name_crc_list
 #include <tap_mirror/tap_mirror_all_api_h.h>
 #undef vl_msg_name_crc_list
-
 #include <tap_mirror/tap_mirror_cli.h>
-
-vlib_node_registration_t tap_mirror_node;
 
 tap_mirror_main_t *
 tap_mirror_get_main(void)
@@ -96,7 +93,7 @@ disable_tap_mirror(vlib_main_t *vm,
   }
   xm->node_name[0] = '\0';
   xm->tap_name[0] = '\0';
-  xm->original_node_index = ~0U;
+  xm->flags &= ~TAP_MIRROR_F_ENABLED;
 }
 
 static int
@@ -154,26 +151,6 @@ set_link_up_down(const char *name, bool is_up)
   return 0;
 }
 
-int
-enable_tap_mirror(vlib_main_t *vm,
-  const char *node_name, const char *tap_name)
-{
-  if (tap_mirror_is_enabled()) {
-    vlib_cli_output (vm, "%s: failed. already enabled\n", __func__);
-    return -1;
-  }
-
-  tap_mirror_main_t *xm = tap_mirror_get_main();
-  xm->flags |= TAP_MIRROR_F_ENABLED;
-  snprintf(xm->node_name, sizeof(xm->node_name), "%s", node_name);
-  snprintf(xm->tap_name, sizeof(xm->tap_name), "%s", tap_name);
-
-  assert(xm->tap_fd <= 0);
-  xm->tap_fd = open_tap_fd(tap_name);
-  set_link_up_down(tap_name, true);
-  return 0;
-}
-
 static clib_error_t *
 tap_mirror_init (vlib_main_t *vm)
 {
@@ -181,7 +158,6 @@ tap_mirror_init (vlib_main_t *vm)
   tap_mirror_main_t * mmp = tap_mirror_get_main();
   mmp->vlib_main = vm;
   mmp->vnet_main = vnet_get_main();
-  mmp->mirror_node_index = tap_mirror_node.index;
   mmp->tap_fd = -1;
 
   uint8_t * name = format (0, "tap_mirror_%08x%c", api_version, 0);
@@ -200,12 +176,48 @@ tap_mirror_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t 
   return f->n_vectors;
 }
 
+int
+enable_tap_mirror(vlib_main_t *vm,
+  const char *node_name, const char *tap_name)
+{
+  if (tap_mirror_is_enabled()) {
+    vlib_cli_output (vm, "%s: failed. already enabled\n", __func__);
+    return -1;
+  }
+
+  tap_mirror_main_t *xm = tap_mirror_get_main();
+  xm->flags |= TAP_MIRROR_F_ENABLED;
+  snprintf(xm->node_name, sizeof(xm->node_name), "%s", node_name);
+  snprintf(xm->tap_name, sizeof(xm->tap_name), "%s", tap_name);
+
+  uint8_t *str_ptr = format(0, "%s", node_name);
+  vlib_node_t *node = vlib_get_node_by_name(vlib_get_main(), str_ptr);
+  if (!node) {
+    vlib_cli_output (vm,
+      "%s: failed. no such node (%s)\n",
+      __func__, node_name);
+    return -2;
+  }
+
+  vlib_node_runtime_t *runtime =
+      vlib_node_get_runtime(vlib_get_main(), node->index);
+  assert(runtime);
+  xm->target_fn = runtime->function;
+  runtime->function = tap_mirror_input_fn; // KOKO
+  runtime->function = xm->target_fn;
+
+  assert(xm->tap_fd <= 0);
+  xm->tap_fd = open_tap_fd(tap_name);
+  set_link_up_down(tap_name, true);
+  return 0;
+}
+
 VLIB_INIT_FUNCTION (tap_mirror_init);
 
 VNET_FEATURE_INIT (tap_mirror, static) =
 {
   .arc_name = "device-input",
-  .node_name = "tap_mirror",
+  .node_name = "tap-mirror",
   .runs_after = VNET_FEATURES ("ethernet-input"),
 };
 
@@ -213,13 +225,6 @@ VLIB_PLUGIN_REGISTER () =
 {
   .version = VPP_BUILD_VER,
   .description = "tap_mirror plugin for operational debug",
-};
-
-VLIB_REGISTER_NODE (tap_mirror_node) = {
-  .function = tap_mirror_input_fn,
-  .name = "tap-mirror-input",
-  .vector_size = sizeof (uint32_t),
-  .type = VLIB_NODE_TYPE_INTERNAL,
 };
 
 VLIB_CLI_COMMAND (set_node_tap_mirror, static) = {

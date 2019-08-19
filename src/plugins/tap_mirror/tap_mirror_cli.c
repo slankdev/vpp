@@ -123,8 +123,10 @@ set_tap_mirror_fn (vlib_main_t *vm,
     disable_tap_mirror(vm, node_name, tap_name);
   } else {
     int ret = enable_tap_mirror(vm, node_name, tap_name);
-    if (ret < 0)
+    if (ret < 0) {
+      disable_tap_mirror(vm, node_name, tap_name);
       return clib_error_return (0, "set_tap_mirro failed");
+    }
   }
 
   vec_free(node_name);
