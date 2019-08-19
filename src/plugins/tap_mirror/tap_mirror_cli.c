@@ -74,8 +74,9 @@ show_tap_mirror_fn (vlib_main_t *vm, unformat_input_t *input,
 
   tap_mirror_main_t *xm = tap_mirror_get_main();
   vlib_cli_output(vm, "\n");
-  vlib_cli_output(vm, "node: %s (org_index=%u, cur_index=%u)\n", xm->node_name, 0, 0);
-  vlib_cli_output(vm, "tap: %s (ifindex=%u)\n", xm->tap_name);
+  vlib_cli_output(vm, "Target Node Info\n");
+  vlib_cli_output(vm, " node: %s (org_index=%u, cur_index=%u)\n", xm->node_name, 0, 0);
+  vlib_cli_output(vm, " tap: %s (ifindex=%u)\n", xm->tap_name);
   vlib_cli_output(vm, "\n");
   return 0;
 }
@@ -118,9 +119,13 @@ set_tap_mirror_fn (vlib_main_t *vm,
     vlib_cli_output (vm, " reset: %s\n", is_reset ? "true" : "false");
   }
 
-  int ret = set_tap_mirror(vm, node_name, tap_name);
-  if (ret < 0)
-    return clib_error_return (0, "set_tap_mirro failed");
+  if (is_reset) {
+    disable_tap_mirror(vm, node_name, tap_name);
+  } else {
+    int ret = enable_tap_mirror(vm, node_name, tap_name);
+    if (ret < 0)
+      return clib_error_return (0, "set_tap_mirro failed");
+  }
 
   vec_free(node_name);
   vec_free(tap_name);

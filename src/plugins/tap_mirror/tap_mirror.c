@@ -85,8 +85,77 @@ tap_mirror_is_enabled (void)
   return !!(xm->flags & TAP_MIRROR_F_ENABLED);
 }
 
+void
+disable_tap_mirror(vlib_main_t *vm,
+  const char *node_name, const char *tap_name)
+{
+  tap_mirror_main_t *xm = tap_mirror_get_main();
+  if (xm->tap_fd > 0) {
+    close(xm->tap_fd);
+    xm->tap_fd = -1;
+  }
+  xm->node_name[0] = '\0';
+  xm->tap_name[0] = '\0';
+  xm->original_node_index = ~0U;
+}
+
+static int
+open_tap_fd(const char *name)
+{
+  int fd = open("/dev/net/tun", O_RDWR|O_NONBLOCK);
+  if (fd < 0) {
+    //"%s: failed. open tap-fd\n"
+    return -1;
+  }
+
+  struct ifreq ifr;
+  memset (&ifr, 0, sizeof (ifr));
+  ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
+  snprintf (ifr.ifr_name, IFNAMSIZ, "%s", name);
+  int ret = ioctl (fd, TUNSETIFF, (void *) &ifr);
+  if (ret < 0) {
+    //"%s: ioctl(TUNSETIFF) failed.\n"
+    close (fd);
+    return -2;
+  }
+
+  return fd;
+}
+
+static int
+set_link_up_down(const char *name, bool is_up)
+{
+  int fd = socket (AF_INET, SOCK_DGRAM, 0);
+  if (fd < 0) {
+    //"%s: socket failed.\n"
+    return -1;
+  }
+
+  struct ifreq ifr;
+  memset (&ifr, 0, sizeof (ifr));
+  strncpy (ifr.ifr_name, name, IFNAMSIZ - 1);
+  int ret = ioctl (fd, SIOCGIFFLAGS, &ifr);
+  if (ret < 0) {
+    //"%s: ioctl(SIOCGIFFLAGS) failed.\n"
+    close (fd);
+    return -2;
+  }
+
+  if (is_up) ifr.ifr_flags |= IFF_UP;
+  else ifr.ifr_flags &= ~IFF_UP;
+  ret = ioctl (fd, SIOCSIFFLAGS, &ifr);
+  if (ret < 0) {
+    //"%s: ioctl(SIOCSIFFLAGS) failed.\n"
+    close (fd);
+    return -3;
+  }
+
+  close (fd);
+  return 0;
+}
+
 int
-set_tap_mirror(vlib_main_t *vm,
+enable_tap_mirror(vlib_main_t *vm,
   const char *node_name, const char *tap_name)
 {
   if (tap_mirror_is_enabled()) {
@@ -99,7 +168,9 @@ set_tap_mirror(vlib_main_t *vm,
   snprintf(xm->node_name, sizeof(xm->node_name), "%s", node_name);
   snprintf(xm->tap_name, sizeof(xm->tap_name), "%s", tap_name);
 
-  /* printf("SLANKDEV: %s\n", __func__); */
+  assert(xm->tap_fd <= 0);
+  xm->tap_fd = open_tap_fd(tap_name);
+  set_link_up_down(tap_name, true);
   return 0;
 }
 
@@ -111,6 +182,7 @@ tap_mirror_init (vlib_main_t *vm)
   mmp->vlib_main = vm;
   mmp->vnet_main = vnet_get_main();
   mmp->mirror_node_index = tap_mirror_node.index;
+  mmp->tap_fd = -1;
 
   uint8_t * name = format (0, "tap_mirror_%08x%c", api_version, 0);
   mmp->msg_id_base = vl_msg_api_get_msg_ids

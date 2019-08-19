@@ -31,12 +31,15 @@ typedef struct {
   char node_name[256];
   char tap_name[256];
   uint32_t mirror_node_index;
-  // uint32_t original_node_index;
+  uint32_t original_node_index;
+  int tap_fd;
 } tap_mirror_main_t;
 
 tap_mirror_main_t *tap_mirror_get_main(void);
 int tap_mirror_is_enabled (void);
-int set_tap_mirror(vlib_main_t *vm,
+int enable_tap_mirror(vlib_main_t *vm,
+  const char *node_name, const char *tap_name);
+void disable_tap_mirror(vlib_main_t *vm,
   const char *node_name, const char *tap_name);
 
 
