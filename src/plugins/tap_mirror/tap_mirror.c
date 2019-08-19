@@ -67,20 +67,6 @@
 #include <tap_mirror/tap_mirror_all_api_h.h>
 #undef vl_msg_name_crc_list
 
-#define foreach_tap_mirror_plugin_api_msg \
-_(TAP_INJECT_ENABLE_DISABLE, tap_inject_enable_disable) \
-_(TAP_INJECT_DUMP, tap_inject_dump) \
-_(TAP_INJECT_DETAILS, tap_inject_details) \
-_(GET_NODE_INFO, get_node_info) \
-_(GET_NODE_INFO_REPLY, get_node_info_reply) \
-_(GET_PROC_INFO, get_proc_info) \
-_(GET_PROC_INFO_REPLY, get_proc_info_reply) \
-
-#define MTU 1500
-#define MTU_BUFFERS ((MTU + VLIB_BUFFER_DATA_SIZE - 1) / VLIB_BUFFER_DATA_SIZE)
-#define NUM_BUFFERS_TO_ALLOC 32
-#define VLIB_BUFFER_DATA_SIZE (2048)
-
 vlib_node_registration_t tap_mirror_node;
 
 static tap_mirror_main_t *
@@ -95,7 +81,7 @@ tap_inject_is_enabled (void)
 {
   printf("SLANKDEV: %s\n", __func__);
   tap_mirror_main_t * im = tap_mirror_get_main ();
-  return !!(im->flags & TAP_INJECT_F_ENABLED);
+  return !!(im->flags & TAP_MIRROR_F_ENABLED);
 }
 
 static int
@@ -103,7 +89,7 @@ tap_inject_is_config_disabled (void)
 {
   printf("SLANKDEV: %s\n", __func__);
   tap_mirror_main_t * im = tap_mirror_get_main ();
-  return !!(im->flags & TAP_INJECT_F_CONFIG_DISABLE);
+  return !!(im->flags & TAP_MIRROR_F_CONFIG_DISABLE);
 }
 
 static clib_error_t *
@@ -113,7 +99,7 @@ tap_mirror_init (vlib_main_t *vm)
   tap_mirror_main_t * mmp = tap_mirror_get_main();
   mmp->vlib_main = vm;
   mmp->vnet_main = vnet_get_main();
-  mmp->tx_node_index = tap_mirror_node.index;
+  mmp->mirror_node_index = tap_mirror_node.index;
 
   uint8_t * name = format (0, "tap_mirror_%08x%c", api_version, 0);
   mmp->msg_id_base = vl_msg_api_get_msg_ids
@@ -138,25 +124,6 @@ enable_disable_tap_inject_cmd_fn (vlib_main_t * vm, unformat_input_t * input,
   return 0;
 }
 
-static uint8_t *
-format_tap_inject_tap_name (uint8_t * s, va_list * args)
-{
-  int fd = socket (PF_PACKET, SOCK_RAW, htons (ETH_P_ALL));
-  if (fd < 0)
-    return 0;
-
-  struct ifreq ifr;
-  memset (&ifr, 0, sizeof (ifr));
-  ifr.ifr_ifindex = va_arg (*args, uint32_t);
-  if (ioctl (fd, SIOCGIFNAME, &ifr) < 0) {
-    close (fd);
-    return 0;
-  }
-
-  close (fd);
-  return format (s, "%s", ifr.ifr_name);
-}
-
 static clib_error_t *
 show_tap_inject (vlib_main_t * vm, unformat_input_t * input,
                  vlib_cli_command_t * cmd)
@@ -171,20 +138,7 @@ show_tap_inject (vlib_main_t * vm, unformat_input_t * input,
     return 0;
   }
 
-  vlib_cli_output (vm, "tap-inject is enabled.\n");
-  uint32_t k, v;
-  vnet_main_t * vnet_main = vnet_get_main ();
-  tap_mirror_main_t * im = tap_mirror_get_main ();
-  hash_foreach (k, v, im->tap_if_index_to_sw_if_index,
-    /* routine */ {
-      vnet_sw_interface_t *iface = vnet_get_sw_interface(vnet_main, v);
-      vlib_cli_output (vm, "%U -> %U",
-              format_vnet_sw_interface_name, vnet_main, iface,
-              format_tap_inject_tap_name, k);
-      vlib_cli_output(vm, "  vpp%u %U \n", v, format_vnet_sw_interface_name, vnet_main, iface);
-      vlib_cli_output(vm, "  kern%u %U \n", k, format_tap_inject_tap_name, k);
-    }
-  );
+  printf("SLANKDEV: %s\n", __func__);
   return 0;
 }
 
@@ -195,92 +149,6 @@ tap_inject_tx (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * f)
   uint32_t* pkts = vlib_frame_vector_args (f);
   vlib_buffer_free (vm, pkts, f->n_vectors);
   return f->n_vectors;
-}
-
-static uint32_t
-tap_inject_lookup_sw_if_index_from_tap_fd (uint32_t tap_fd)
-{
-  tap_mirror_main_t * im = tap_mirror_get_main ();
-  vec_validate_init_empty (im->tap_fd_to_sw_if_index, tap_fd, ~0);
-  return im->tap_fd_to_sw_if_index[tap_fd];
-}
-
-static inline uint64_t
-tap_rx (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * f, int fd)
-{
-  tap_mirror_main_t * im = tap_mirror_get_main ();
-  uint32_t sw_if_index = tap_inject_lookup_sw_if_index_from_tap_fd (fd);
-  if (sw_if_index == ~0)
-    return 0;
-
-  /* Allocate buffers in bulk when there are less than enough to rx an MTU. */
-  if (vec_len (im->rx_buffers) < MTU_BUFFERS) {
-    uint32_t len = vec_len (im->rx_buffers);
-    uint8_t buffer_pool_index = vlib_buffer_pool_get_default_for_numa(vm, 0);
-    len = vlib_buffer_alloc_from_pool (vm,
-                  &im->rx_buffers[len], NUM_BUFFERS_TO_ALLOC,
-                  buffer_pool_index);
-
-    _vec_len (im->rx_buffers) += len;
-    if (vec_len (im->rx_buffers) < MTU_BUFFERS) {
-      clib_warning ("failed to allocate buffers");
-      return 0;
-    }
-  }
-
-  /* Fill buffers from the end of the list to make it easier to resize. */
-  struct iovec iov[MTU_BUFFERS];
-  uint32_t bi[MTU_BUFFERS];
-  for (uint32_t i = 0, j = vec_len (im->rx_buffers) - 1; i < MTU_BUFFERS; ++i, --j) {
-    vlib_buffer_t * b;
-    bi[i] = im->rx_buffers[j];
-    b = vlib_get_buffer (vm, bi[i]);
-    iov[i].iov_base = b->data;
-    iov[i].iov_len = VLIB_BUFFER_DATA_SIZE;
-  }
-
-  ssize_t n_bytes = readv (fd, iov, MTU_BUFFERS);
-  if (n_bytes < 0) {
-    clib_warning ("readv failed");
-    return 0;
-  }
-
-  vlib_buffer_t * b = vlib_get_buffer (vm, bi[0]);
-  vnet_buffer (b)->sw_if_index[VLIB_RX] = sw_if_index;
-  vnet_buffer (b)->sw_if_index[VLIB_TX] = sw_if_index;
-  ssize_t n_bytes_left = n_bytes - VLIB_BUFFER_DATA_SIZE;
-  if (n_bytes_left > 0) {
-    b->total_length_not_including_first_buffer = n_bytes_left;
-    b->flags |= VLIB_BUFFER_TOTAL_LENGTH_VALID;
-  }
-
-  uint32_t i;
-  b->current_length = n_bytes;
-  for (i = 1; n_bytes_left > 0; ++i, n_bytes_left -= VLIB_BUFFER_DATA_SIZE) {
-    vlib_buffer_t * b = vlib_get_buffer (vm, bi[i - 1]);
-    b->current_length = VLIB_BUFFER_DATA_SIZE;
-    b->flags |= VLIB_BUFFER_NEXT_PRESENT;
-    b->next_buffer = bi[i];
-    b = vlib_get_buffer (vm, bi[i]);
-    b->current_length = n_bytes_left;
-  }
-
-  _vec_len (im->rx_buffers) -= i;
-  /* Get the packet to the output node. */
-  {
-    vnet_hw_interface_t * hw;
-    vlib_frame_t * new_frame;
-    uint32_t * to_next;
-
-    hw = vnet_get_hw_interface (vnet_get_main (), sw_if_index);
-    new_frame = vlib_get_frame_to_node (vm, hw->output_node_index);
-    to_next = vlib_frame_vector_args (new_frame);
-    to_next[0] = bi[0];
-    new_frame->n_vectors = 1;
-    vlib_put_frame_to_node (vm, hw->output_node_index, new_frame);
-  }
-
-  return 1;
 }
 
 VLIB_INIT_FUNCTION (tap_mirror_init);

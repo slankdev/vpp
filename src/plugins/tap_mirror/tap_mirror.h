@@ -26,22 +26,13 @@ typedef struct {
   vnet_main_t *vnet_main;
   ethernet_main_t *ethernet_main;
 
-#define TAP_INJECT_F_CONFIG_ENABLE  (1U << 0)
-#define TAP_INJECT_F_CONFIG_DISABLE (1U << 1)
-#define TAP_INJECT_F_ENABLED        (1U << 3)
+#define TAP_MIRROR_F_CONFIG_ENABLE  (1U << 0)
+#define TAP_MIRROR_F_CONFIG_DISABLE (1U << 1)
+#define TAP_MIRROR_F_ENABLED        (1U << 3)
   uint32_t flags;
 
-  uint32_t *sw_if_index_to_tap_fd;
-  uint32_t *sw_if_index_to_tap_if_index;
-  uint32_t *tap_fd_to_sw_if_index;
-  uint32_t *tap_if_index_to_sw_if_index;
-  uint32_t *interfaces_to_enable;
-  uint32_t *interfaces_to_disable;
-  uint32_t *rx_file_descriptors;
-  uint32_t rx_node_index;
-  uint32_t tx_node_index;
-  uint32_t neighbor_node_index;
-  uint32_t *rx_buffers;
+  uint32_t mirror_node_index;
+  uint32_t original_node_index;
 } tap_mirror_main_t;
 
 #endif /* __included_tap_mirror_h__ */
