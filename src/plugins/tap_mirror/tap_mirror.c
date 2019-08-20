@@ -191,7 +191,6 @@ tap_mirror_input_fn (vlib_main_t * vm,
       int ret = write(xm->tap_fd, ptr, len);
       if (ret < 0)
         printf("%s: tapmirror write failed (ret=%d)\n", __func__, ret);
-      //printf("%s: ptr/len: %p/%zd\n", __func__, ptr, len);
     }
 
     vlib_buffer_free (vm, &xm->clones[thread_index][1], 1);
