@@ -176,10 +176,9 @@ tap_mirror_input_fn (vlib_main_t * vm,
 		 xm->clones[thread_index], 2,
                  VLIB_BUFFER_CLONE_HEAD_SIZE);
     assert(n_cloned == 2);
-
-    vlib_process_signal_event_mt (vm, xm->redirector_node_index,
+    vlib_process_signal_event_mt(vm,
+	xm->redirector_node_index,
         10, xm->clones[thread_index][1]);
-    //printf("send signal\n");
   }
   return xm->target_fn(vm, node, f);
 }
