@@ -188,9 +188,10 @@ tap_mirror_input_fn (vlib_main_t * vm,
     if (true /* debug*/) {
       uint8_t *ptr = vlib_buffer_get_current(b);
       size_t len = vlib_buffer_length_in_chain(vm, b);
-      printf("%s: ptr/len: %p/%zd\n", __func__, ptr, len);
-
-      // TODO: write to tap
+      int ret = write(xm->tap_fd, ptr, len);
+      if (ret < 0)
+        printf("%s: tapmirror write failed (ret=%d)\n", __func__, ret);
+      //printf("%s: ptr/len: %p/%zd\n", __func__, ptr, len);
     }
 
     vlib_buffer_free (vm, &xm->clones[thread_index][1], 1);
