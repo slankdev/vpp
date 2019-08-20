@@ -208,7 +208,6 @@ enable_tap_mirror(vlib_main_t *vm,
   }
 
   tap_mirror_main_t *xm = tap_mirror_get_main();
-  xm->flags |= TAP_MIRROR_F_ENABLED;
   snprintf(xm->node_name, sizeof(xm->node_name), "%s", node_name);
   snprintf(xm->tap_name, sizeof(xm->tap_name), "%s", tap_name);
 
@@ -227,6 +226,7 @@ enable_tap_mirror(vlib_main_t *vm,
   xm->tap_fd = open_tap_fd(tap_name);
   set_link_up_down(tap_name, true);
 
+  xm->flags |= TAP_MIRROR_F_ENABLED;
   xm->target_rt = runtime;
   xm->target_fn = runtime->function;
   runtime->function = tap_mirror_input_fn;
