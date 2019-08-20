@@ -214,23 +214,22 @@ enable_tap_mirror(vlib_main_t *vm,
 
   uint8_t *str_ptr = format(0, "%s", node_name);
   vlib_node_t *node = vlib_get_node_by_name(vlib_get_main(), str_ptr);
-  if (!node) {
+  vlib_node_runtime_t *runtime = node ?
+       vlib_node_get_runtime(vm, node->index) : NULL;
+  if (!runtime) {
     vlib_cli_output (vm,
-      "%s: failed. no such node (%s)\n",
+      "%s: failed. no such node or runtime (%s)\n",
       __func__, node_name);
     return -2;
   }
 
-  vlib_node_runtime_t *runtime =
-      vlib_node_get_runtime(vlib_get_main(), node->index);
-  assert(runtime);
-  xm->target_rt = runtime;
-  xm->target_fn = runtime->function;
-  runtime->function = tap_mirror_input_fn;
-
   assert(xm->tap_fd <= 0);
   xm->tap_fd = open_tap_fd(tap_name);
   set_link_up_down(tap_name, true);
+
+  xm->target_rt = runtime;
+  xm->target_fn = runtime->function;
+  runtime->function = tap_mirror_input_fn;
   return 0;
 }
 
