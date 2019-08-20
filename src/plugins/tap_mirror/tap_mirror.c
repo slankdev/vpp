@@ -173,9 +173,7 @@ static uint64_t
 tap_mirror_input_fn (vlib_main_t * vm,
     vlib_node_runtime_t * node, vlib_frame_t * f)
 {
-  printf("SLANKDEV: %s\n", __func__);
   tap_mirror_main_t *xm = tap_mirror_get_main();
-
   uint32_t *pkts = vlib_frame_vector_args (f);
   for (uint32_t i = 0; i < f->n_vectors; ++i) {
     uint32_t thread_index = vlib_get_thread_index();
@@ -187,14 +185,16 @@ tap_mirror_input_fn (vlib_main_t * vm,
 
     vlib_buffer_t *b = vlib_get_buffer (vm, xm->clones[thread_index][1]);
     vlib_buffer_advance (b, -b->current_data);
-    if (0 /* debug*/) {
-      ethernet_header_t *e0 = vlib_buffer_get_current(b);
-      printf("type: 0x%04x\n", clib_net_to_host_u16(e0->type));
+    if (true /* debug*/) {
+      uint8_t *ptr = vlib_buffer_get_current(b);
+      size_t len = vlib_buffer_length_in_chain(vm, b);
+      printf("%s: ptr/len: %p/%zd\n", __func__, ptr, len);
+
+      // TODO: write to tap
     }
 
     vlib_buffer_free (vm, &xm->clones[thread_index][1], 1);
   }
-
   return xm->target_fn(vm, node, f);
 }
 
