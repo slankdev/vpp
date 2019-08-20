@@ -87,14 +87,9 @@ disable_tap_mirror(vlib_main_t *vm,
   const char *node_name, const char *tap_name)
 {
   tap_mirror_main_t *xm = tap_mirror_get_main();
-  if (xm->tap_fd > 0) {
-    close(xm->tap_fd);
-    xm->tap_fd = -1;
-  }
-  xm->node_name[0] = '\0';
-  xm->tap_name[0] = '\0';
   xm->flags &= ~TAP_MIRROR_F_ENABLED;
-  xm->target_rt->function = xm->target_fn;
+  if (xm->target_rt)
+    xm->target_rt->function = xm->target_fn;
 }
 
 static int
@@ -155,7 +150,6 @@ set_link_up_down(const char *name, bool is_up)
 static clib_error_t *
 tap_mirror_init (vlib_main_t *vm)
 {
-  printf("SLANKDEV: %s\n", __func__);
   tap_mirror_main_t * mmp = tap_mirror_get_main();
   mmp->vlib_main = vm;
   mmp->vnet_main = vnet_get_main();
@@ -183,17 +177,9 @@ tap_mirror_input_fn (vlib_main_t * vm,
                  VLIB_BUFFER_CLONE_HEAD_SIZE);
     assert(n_cloned == 2);
 
-    vlib_buffer_t *b = vlib_get_buffer (vm, xm->clones[thread_index][1]);
-    vlib_buffer_advance (b, -b->current_data);
-    if (true /* debug*/) {
-      uint8_t *ptr = vlib_buffer_get_current(b);
-      size_t len = vlib_buffer_length_in_chain(vm, b);
-      int ret = write(xm->tap_fd, ptr, len);
-      if (ret < 0)
-        printf("%s: tapmirror write failed (ret=%d)\n", __func__, ret);
-    }
-
-    vlib_buffer_free (vm, &xm->clones[thread_index][1], 1);
+    vlib_process_signal_event_mt (vm, xm->redirector_node_index,
+        10, xm->clones[thread_index][1]);
+    //printf("send signal\n");
   }
   return xm->target_fn(vm, node, f);
 }
@@ -226,7 +212,12 @@ enable_tap_mirror(vlib_main_t *vm,
   xm->tap_fd = open_tap_fd(tap_name);
   set_link_up_down(tap_name, true);
 
+  vlib_node_t *redirector_node =
+       vlib_get_node_by_name(vm,
+       (uint8_t*)"tap-mirror-redirector");
+
   xm->flags |= TAP_MIRROR_F_ENABLED;
+  xm->redirector_node_index = redirector_node->index;
   xm->target_rt = runtime;
   xm->target_fn = runtime->function;
   runtime->function = tap_mirror_input_fn;
@@ -243,21 +234,49 @@ VNET_FEATURE_INIT (tap_mirror, static) =
 };
 
 static uint64_t
-test_proc_fn (vlib_main_t *vm, vlib_node_runtime_t *rt, vlib_frame_t *f)
+tap_mirror_redirector_fn (vlib_main_t *vm, vlib_node_runtime_t *rt, vlib_frame_t *f)
 {
-  for (int i=0;; i++) {
-    //vlib_process_wait_for_event (vm);
-    //data = vlib_process_get_event_data (vm, &type);
-    //vlib_process_put_event_data (vm, data);
-    vlib_cli_output (vm, "slank: %d", i);
-    vlib_process_suspend (vm, 1e0 /* secs */ );
+  uint64_t *event_data = 0;
+  tap_mirror_main_t *xm = tap_mirror_get_main();
+  while (true) {
+
+    //printf("%s:%d\n", __func__, __LINE__);
+    vlib_process_wait_for_event_or_clock(vm, 1.0);
+    uint64_t event_type = vlib_process_get_events (vm, &event_data);
+    switch (event_type) {
+      case 10:
+      {
+        uint64_t buffer_index = *event_data;
+        vlib_buffer_t *b = vlib_get_buffer (vm, buffer_index);
+        vlib_buffer_advance (b, -b->current_data);
+        uint8_t *ptr = vlib_buffer_get_current(b);
+        size_t len = vlib_buffer_length_in_chain(vm, b);
+        int ret = write(xm->tap_fd, ptr, len);
+        if (ret < 0)
+          printf("%s: tapmirror write failed (ret=%d)\n", __func__, ret);
+        vlib_buffer_free_one (vm, buffer_index);
+        //printf("tap write\n");
+        break;
+      }
+      default:
+	break;
+    }
+
+    //printf("%s:%d\n", __func__, __LINE__);
+    vec_reset_length(event_data);
+    vlib_process_suspend (vm, 0 /* secs */ );
+
+    if (!tap_mirror_is_enabled()) {
+      close(xm->tap_fd);
+      xm->tap_fd = -1;
+    }
   }
   return 0;
 }
 
-VLIB_REGISTER_NODE (test_proc, static) = {
-  .function = test_proc_fn,
-  .name = "my-proc",
+VLIB_REGISTER_NODE (tap_mirror_redirector, static) = {
+  .function = tap_mirror_redirector_fn,
+  .name = "tap-mirror-redirector",
   .type = VLIB_NODE_TYPE_PROCESS,
 };
 
