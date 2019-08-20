@@ -242,6 +242,25 @@ VNET_FEATURE_INIT (tap_mirror, static) =
   .runs_after = VNET_FEATURES ("ethernet-input"),
 };
 
+static uint64_t
+test_proc_fn (vlib_main_t *vm, vlib_node_runtime_t *rt, vlib_frame_t *f)
+{
+  for (int i=0;; i++) {
+    //vlib_process_wait_for_event (vm);
+    //data = vlib_process_get_event_data (vm, &type);
+    //vlib_process_put_event_data (vm, data);
+    vlib_cli_output (vm, "slank: %d", i);
+    vlib_process_suspend (vm, 1e0 /* secs */ );
+  }
+  return 0;
+}
+
+VLIB_REGISTER_NODE (test_proc, static) = {
+  .function = test_proc_fn,
+  .name = "my-proc",
+  .type = VLIB_NODE_TYPE_PROCESS,
+};
+
 VLIB_PLUGIN_REGISTER () =
 {
   .version = VPP_BUILD_VER,
