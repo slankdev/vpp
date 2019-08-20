@@ -154,7 +154,6 @@ tap_mirror_init (vlib_main_t *vm)
   mmp->vlib_main = vm;
   mmp->vnet_main = vnet_get_main();
   mmp->tap_fd = -1;
-  vec_validate(mmp->clones, vlib_num_workers());
 
   uint8_t * name = format (0, "tap_mirror_%08x%c", api_version, 0);
   mmp->msg_id_base = vl_msg_api_get_msg_ids
@@ -170,15 +169,13 @@ tap_mirror_input_fn (vlib_main_t * vm,
   tap_mirror_main_t *xm = tap_mirror_get_main();
   uint32_t *pkts = vlib_frame_vector_args (f);
   for (uint32_t i = 0; i < f->n_vectors; ++i) {
-    uint32_t thread_index = vlib_get_thread_index();
-    vec_validate (xm->clones[thread_index], 1);
-    uint32_t n_cloned = vlib_buffer_clone (vm, pkts[i],
-		 xm->clones[thread_index], 2,
-                 VLIB_BUFFER_CLONE_HEAD_SIZE);
+    uint32_t clones[2];
+    uint32_t n_cloned = vlib_buffer_clone (vm,
+        pkts[i], clones, 2, VLIB_BUFFER_CLONE_HEAD_SIZE);
     assert(n_cloned == 2);
     vlib_process_signal_event_mt(vm,
 	xm->redirector_node_index,
-        10, xm->clones[thread_index][1]);
+        10, clones[1]);
   }
   return xm->target_fn(vm, node, f);
 }
