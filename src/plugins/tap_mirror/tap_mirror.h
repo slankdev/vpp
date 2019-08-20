@@ -31,7 +31,9 @@ typedef struct {
   char node_name[256];
   char tap_name[256];
   int tap_fd;
+  uint32_t **clones;
   vlib_node_function_t *target_fn;
+  vlib_node_runtime_t *target_rt;
 } tap_mirror_main_t;
 
 tap_mirror_main_t *tap_mirror_get_main(void);

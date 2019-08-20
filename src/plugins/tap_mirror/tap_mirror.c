@@ -94,6 +94,7 @@ disable_tap_mirror(vlib_main_t *vm,
   xm->node_name[0] = '\0';
   xm->tap_name[0] = '\0';
   xm->flags &= ~TAP_MIRROR_F_ENABLED;
+  xm->target_rt->function = xm->target_fn;
 }
 
 static int
@@ -159,6 +160,7 @@ tap_mirror_init (vlib_main_t *vm)
   mmp->vlib_main = vm;
   mmp->vnet_main = vnet_get_main();
   mmp->tap_fd = -1;
+  vec_validate(mmp->clones, vlib_num_workers());
 
   uint8_t * name = format (0, "tap_mirror_%08x%c", api_version, 0);
   mmp->msg_id_base = vl_msg_api_get_msg_ids
@@ -168,13 +170,31 @@ tap_mirror_init (vlib_main_t *vm)
 }
 
 static uint64_t
-tap_mirror_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * f)
+tap_mirror_input_fn (vlib_main_t * vm,
+    vlib_node_runtime_t * node, vlib_frame_t * f)
 {
   printf("SLANKDEV: %s\n", __func__);
-  // KOKO
-  /* uint32_t* pkts = vlib_frame_vector_args (f); */
-  /* vlib_buffer_free (vm, pkts, f->n_vectors); */
   tap_mirror_main_t *xm = tap_mirror_get_main();
+
+  uint32_t *pkts = vlib_frame_vector_args (f);
+  for (uint32_t i = 0; i < f->n_vectors; ++i) {
+    uint32_t thread_index = vlib_get_thread_index();
+    vec_validate (xm->clones[thread_index], 1);
+    uint32_t n_cloned = vlib_buffer_clone (vm, pkts[i],
+		 xm->clones[thread_index], 2,
+                 VLIB_BUFFER_CLONE_HEAD_SIZE);
+    assert(n_cloned == 2);
+
+    vlib_buffer_t *b = vlib_get_buffer (vm, xm->clones[thread_index][1]);
+    vlib_buffer_advance (b, -b->current_data);
+    if (0 /* debug*/) {
+      ethernet_header_t *e0 = vlib_buffer_get_current(b);
+      printf("type: 0x%04x\n", clib_net_to_host_u16(e0->type));
+    }
+
+    vlib_buffer_free (vm, &xm->clones[thread_index][1], 1);
+  }
+
   return xm->target_fn(vm, node, f);
 }
 
@@ -204,6 +224,7 @@ enable_tap_mirror(vlib_main_t *vm,
   vlib_node_runtime_t *runtime =
       vlib_node_get_runtime(vlib_get_main(), node->index);
   assert(runtime);
+  xm->target_rt = runtime;
   xm->target_fn = runtime->function;
   runtime->function = tap_mirror_input_fn;
 
