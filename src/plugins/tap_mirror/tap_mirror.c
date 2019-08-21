@@ -159,13 +159,18 @@ tap_mirror_init (vlib_main_t *vm)
   mmp->msg_id_base = vl_msg_api_get_msg_ids
       ((char *) name, VL_MSG_FIRST_AVAILABLE);
   vec_free(name);
+
+  vec_validate(mmp->contexts, 8);
   return NULL;
 }
 
 static uint64_t
 tap_mirror_input_fn (vlib_main_t * vm,
-    vlib_node_runtime_t * node, vlib_frame_t * f)
+    vlib_node_runtime_t *rt, vlib_frame_t * f)
 {
+  /* vlib_node_t *node = vlib_get_node(vm, rt->node_index); */
+  /* vlib_cli_output(vm, "mirror from %s\n", node->name); */
+
   tap_mirror_main_t *xm = tap_mirror_get_main();
   uint32_t *pkts = vlib_frame_vector_args (f);
   for (uint32_t i = 0; i < f->n_vectors; ++i) {
@@ -177,7 +182,7 @@ tap_mirror_input_fn (vlib_main_t * vm,
 	xm->redirector_node_index,
         10, clones[1]);
   }
-  return xm->target_fn(vm, node, f);
+  return xm->target_fn(vm, rt, f);
 }
 
 int
@@ -217,6 +222,25 @@ enable_tap_mirror(vlib_main_t *vm,
   xm->target_rt = runtime;
   xm->target_fn = runtime->function;
   runtime->function = tap_mirror_input_fn;
+
+	bool create_successfully = false;
+  for (int i=0; i<vec_len(xm->contexts); i++) {
+    tap_mirror_context_t *ctx = vec_elt(xm->contexts, i);
+    if (!ctx) {
+			ctx = clib_mem_alloc(sizeof(tap_mirror_context_t));
+			memset(ctx, 0, sizeof(tap_mirror_context_t));
+			ctx->target_node_name = format(0, "%s", node_name);
+			vec_validate(ctx->tap_fds, 8);
+			vec_add1(ctx->tap_fds, xm->tap_fd);
+			vec_elt(xm->contexts, i) = ctx;
+			create_successfully = true;
+			break;
+    }
+  }
+	if (!create_successfully) {
+		vlib_cli_output(vm, "create miss\n");
+		return -1;
+	}
   return 0;
 }
 

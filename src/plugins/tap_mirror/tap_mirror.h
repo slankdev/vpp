@@ -21,6 +21,11 @@
 #include <vppinfra/error.h>
 
 typedef struct {
+  uint8_t *target_node_name;
+  int *tap_fds;
+} tap_mirror_context_t;
+
+typedef struct {
   uint16_t msg_id_base;
   vlib_main_t *vlib_main;
   vnet_main_t *vnet_main;
@@ -34,6 +39,7 @@ typedef struct {
   uint32_t redirector_node_index;
   vlib_node_function_t *target_fn;
   vlib_node_runtime_t *target_rt;
+  tap_mirror_context_t **contexts;
 } tap_mirror_main_t;
 
 tap_mirror_main_t *tap_mirror_get_main(void);
