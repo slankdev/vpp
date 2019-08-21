@@ -164,12 +164,30 @@ tap_mirror_init (vlib_main_t *vm)
   return NULL;
 }
 
+static int
+get_event_type(const char *name)
+{
+	int idx = -1;
+  tap_mirror_main_t *xm = tap_mirror_get_main();
+	for (int i=0; i<vec_len(xm->contexts); i++) {
+    tap_mirror_context_t *ctx = vec_elt(xm->contexts, i);
+		if (!ctx) continue;
+		if (strncmp((char*)ctx->target_node_name, name, strlen(name)) == 0) {
+			idx = i;
+			break;
+		}
+	}
+	return idx;
+}
+
 static uint64_t
 tap_mirror_input_fn (vlib_main_t * vm,
     vlib_node_runtime_t *rt, vlib_frame_t * f)
 {
-  /* vlib_node_t *node = vlib_get_node(vm, rt->node_index); */
-  /* vlib_cli_output(vm, "mirror from %s\n", node->name); */
+  vlib_node_t *node = vlib_get_node(vm, rt->node_index);
+	const char* name = (const char*)node->name;
+	int event_type = get_event_type(name);
+  vlib_cli_output(vm, "mirror from %s type=%d\n", name, event_type);
 
   tap_mirror_main_t *xm = tap_mirror_get_main();
   uint32_t *pkts = vlib_frame_vector_args (f);
@@ -179,8 +197,8 @@ tap_mirror_input_fn (vlib_main_t * vm,
         pkts[i], clones, 2, VLIB_BUFFER_CLONE_HEAD_SIZE);
     assert(n_cloned == 2);
     vlib_process_signal_event_mt(vm,
-	xm->redirector_node_index,
-        10, clones[1]);
+	      xm->redirector_node_index,
+        event_type, clones[1]);
   }
   return xm->target_fn(vm, rt, f);
 }
@@ -264,22 +282,26 @@ tap_mirror_redirector_fn (vlib_main_t *vm, vlib_node_runtime_t *rt, vlib_frame_t
     vlib_process_wait_for_event_or_clock(vm, 1.0);
     uint64_t event_type = vlib_process_get_events (vm, &event_data);
     switch (event_type) {
-      case 10:
-      {
-        uint64_t buffer_index = *event_data;
-        vlib_buffer_t *b = vlib_get_buffer (vm, buffer_index);
-        vlib_buffer_advance (b, -b->current_data);
-        uint8_t *ptr = vlib_buffer_get_current(b);
-        size_t len = vlib_buffer_length_in_chain(vm, b);
-        int ret = write(xm->tap_fd, ptr, len);
-        if (ret < 0)
-          printf("%s: tapmirror write failed (ret=%d)\n", __func__, ret);
-        vlib_buffer_free_one (vm, buffer_index);
-        //printf("tap write\n");
-        break;
-      }
+			case -1UL: break;
       default:
-	break;
+			{
+			  printf("recv unknown event %lu\n", event_type);
+				tap_mirror_context_t *ctx = vec_elt(xm->contexts, event_type);
+				for (int i=0; i<vec_len(ctx->tap_fds); i++) {
+					int tap_fd = vec_elt(ctx->tap_fds, i);
+					if (tap_fd <= 0)
+						continue;
+					printf("send to fd=%d\n", tap_fd);
+					uint64_t buffer_index = *event_data;
+					vlib_buffer_t *b = vlib_get_buffer (vm, buffer_index);
+					vlib_buffer_advance (b, -b->current_data);
+					write(xm->tap_fd, vlib_buffer_get_current(b),
+						vlib_buffer_length_in_chain(vm, b));
+					vlib_buffer_free_one (vm, buffer_index);
+				}
+
+	      break;
+			}
     }
 
     //printf("%s:%d\n", __func__, __LINE__);

@@ -100,6 +100,8 @@ show_tap_mirror_fn (vlib_main_t *vm, unformat_input_t *input,
   return 0;
 }
 
+// KOKO TODO XXX KOKOKARA
+// SUPPORT MULTI CONTEXT CLI!!!
 clib_error_t *
 set_tap_mirror_fn (vlib_main_t *vm,
     unformat_input_t *input, vlib_cli_command_t *cmd)
