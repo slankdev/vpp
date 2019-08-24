@@ -167,6 +167,36 @@ set_link_up_down(const char *name, bool is_up)
   return 0;
 }
 
+static vlib_node_runtime_t*
+vlib_get_node_runtime_by_name(vlib_main_t *vm, const char *node_name)
+{
+  uint8_t *str_ptr = format(0, "%s", node_name);
+  vlib_node_t *node = vlib_get_node_by_name(vlib_get_main(), str_ptr);
+  vlib_node_runtime_t *runtime = node ?
+       vlib_node_get_runtime(vm, node->index) : NULL;
+  if (!runtime) {
+    vlib_cli_output (vm,
+      "%s: failed. no such node or runtime (%s)\n",
+      __func__, node_name);
+    return NULL;
+  }
+	return runtime;
+}
+
+static void
+tap_mirror_context_add_new_tap(tap_mirror_context_t *ctx, const char *tap_name)
+{
+	int tap_fd = get_or_open_tapfd(tap_name);
+	if (tap_fd < 0) {
+		printf("OKASHII\n");
+	}
+	printf("new tap-fd:%d\n", tap_fd);
+	set_link_up_down(tap_name, true);
+
+	vec_add1(ctx->tap_fds, tap_fd);
+	vec_add1(ctx->tap_names, format(0, "%s", tap_name));
+}
+
 static clib_error_t *
 tap_mirror_init (vlib_main_t *vm)
 {
@@ -238,21 +268,20 @@ tap_mirror_redirector_fn (vlib_main_t *vm, vlib_node_runtime_t *rt, vlib_frame_t
       default:
 			{
 			  /* printf("%s: recv unknown event %lu\n", __func__, event_type); */
+				uint64_t buffer_index = *event_data;
+				vlib_buffer_t *b = vlib_get_buffer (vm, buffer_index);
+				vlib_buffer_advance (b, -b->current_data);
+
 				tap_mirror_context_t *ctx = vec_elt(xm->contexts, event_type);
 				for (int i=0; i<vec_len(ctx->tap_fds); i++) {
 					int tap_fd = vec_elt(ctx->tap_fds, i);
 					if (tap_fd <= 0)
 						continue;
-
-					uint64_t buffer_index = *event_data;
-					vlib_buffer_t *b = vlib_get_buffer (vm, buffer_index);
-					vlib_buffer_advance (b, -b->current_data);
-
 					write(tap_fd,
 							vlib_buffer_get_current(b),
 						  vlib_buffer_length_in_chain(vm, b));
-					vlib_buffer_free_one (vm, buffer_index);
 				}
+				vlib_buffer_free_one (vm, buffer_index);
 
 	      break;
 			}
@@ -265,42 +294,39 @@ tap_mirror_redirector_fn (vlib_main_t *vm, vlib_node_runtime_t *rt, vlib_frame_t
   return 0;
 }
 
-int
-enable_tap_mirror(vlib_main_t *vm,
-  const char *node_name, const char *tap_name)
+static tap_mirror_context_t*
+get_or_new_tap_mirror_context(const char *node_name)
 {
+
   tap_mirror_main_t *xm = tap_mirror_get_main();
-  uint8_t *str_ptr = format(0, "%s", node_name);
-  vlib_node_t *node = vlib_get_node_by_name(vlib_get_main(), str_ptr);
-  vlib_node_runtime_t *runtime = node ?
-       vlib_node_get_runtime(vm, node->index) : NULL;
-  if (!runtime) {
-    vlib_cli_output (vm,
-      "%s: failed. no such node or runtime (%s)\n",
-      __func__, node_name);
-    return -2;
+  vlib_node_t *redirector_node =
+       vlib_get_node_by_name(vlib_get_main(),
+       (uint8_t*)"tap-mirror-redirector");
+
+	//search exist
+  for (int i=0; i<vec_len(xm->contexts); i++) {
+    tap_mirror_context_t *ctx = vec_elt(xm->contexts, i);
+		if (!ctx)
+			continue;
+		if (memcmp(ctx->target_node_name,
+				node_name, strlen(node_name)) == 0)
+			return ctx;
   }
 
-  vlib_node_t *redirector_node =
-       vlib_get_node_by_name(vm,
-       (uint8_t*)"tap-mirror-redirector");
-  xm->flags |= TAP_MIRROR_F_ENABLED;
-
-	bool create_successfully = false;
+	//create new
   for (int i=0; i<vec_len(xm->contexts); i++) {
     tap_mirror_context_t *ctx = vec_elt(xm->contexts, i);
     if (!ctx) {
-
-			int tap_fd = get_or_open_tapfd(tap_name);
-			if (tap_fd < 0) {
-				printf("OKASHII\n");
-			}
-			printf("new tap-fd:%d\n", tap_fd);
-			set_link_up_down(tap_name, true);
-
 			ctx = clib_mem_alloc(sizeof(tap_mirror_context_t));
 			memset(ctx, 0, sizeof(tap_mirror_context_t));
 			ctx->target_node_name = format(0, "%s", node_name);
+
+			vlib_node_runtime_t *runtime =
+				vlib_get_node_runtime_by_name(vlib_get_main(), node_name);
+			if (!runtime) {
+				clib_mem_free(ctx);
+				return NULL;
+			}
 
 			ctx->redirector_node_index = redirector_node->index;
 			ctx->target_rt = runtime;
@@ -309,17 +335,27 @@ enable_tap_mirror(vlib_main_t *vm,
 
 			vec_validate(ctx->tap_fds, 8);
 			vec_validate(ctx->tap_names, 8);
-			vec_add1(ctx->tap_fds, tap_fd);
-			vec_add1(ctx->tap_names, format(0, "%s", tap_name));
 			vec_elt(xm->contexts, i) = ctx;
-			create_successfully = true;
-			break;
+			return ctx;
     }
   }
-	if (!create_successfully) {
+
+	return NULL;
+}
+
+int
+enable_tap_mirror(vlib_main_t *vm,
+  const char *node_name, const char *tap_name)
+{
+  tap_mirror_main_t *xm = tap_mirror_get_main();
+  xm->flags |= TAP_MIRROR_F_ENABLED;
+
+	tap_mirror_context_t *ctx = get_or_new_tap_mirror_context(node_name);
+	if (!ctx) {
 		vlib_cli_output(vm, "create miss\n");
 		return -1;
 	}
+	tap_mirror_context_add_new_tap(ctx, tap_name);
   return 0;
 }
 

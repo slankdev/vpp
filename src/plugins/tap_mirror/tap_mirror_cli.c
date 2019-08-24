@@ -87,7 +87,9 @@ show_tap_mirror_fn (vlib_main_t *vm, unformat_input_t *input,
 		for (size_t i=0; i<vec_len(ctx->tap_fds); i++)
 			if (ctx->tap_fds[i] > 0)
 			  tap_fds_str = format(tap_fds_str, "%u%s",
-						ctx->tap_fds[i], (i+1)<8?",":"");
+						ctx->tap_fds[i],
+						(i+1)<vec_len(ctx->tap_fds)?",":"");
+
     vlib_cli_output(vm, "  %3d%5s%-20s %-10s %p\n",
 				i, "", ctx->target_node_name, tap_fds_str, ctx->target_fn);
   }
