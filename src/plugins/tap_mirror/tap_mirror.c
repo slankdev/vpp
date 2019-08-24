@@ -119,13 +119,11 @@ get_or_open_tapfd(const char *name)
 			uint8_t *name_ = vec_elt(ctx->tap_names, i);
 			uint8_t *name__ = format(0, "%s", name);
 			if (memcmp(name_, name__, strlen(name)) == 0) {
-				printf("exist. reuse. \n");
 				return vec_elt(ctx->tap_fds, i);
 			}
 		}
 	}
 
-	printf("not exist. alloc. \n");
   int fd = open("/dev/net/tun", O_RDWR|O_NONBLOCK);
   if (fd < 0) {
     //"%s: failed. open tap-fd\n"
@@ -201,7 +199,7 @@ tap_mirror_context_add_new_tap(tap_mirror_context_t *ctx, const char *tap_name)
 	if (tap_fd < 0) {
 		printf("OKASHII\n");
 	}
-	printf("new tap-fd:%d\n", tap_fd);
+	/* printf("new tap-fd:%d\n", tap_fd); */
 	set_link_up_down(tap_name, true);
 
 	vec_add1(ctx->tap_fds, tap_fd);

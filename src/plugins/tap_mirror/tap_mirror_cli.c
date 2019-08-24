@@ -74,24 +74,24 @@ show_tap_mirror_fn (vlib_main_t *vm, unformat_input_t *input,
 
   tap_mirror_main_t *xm = tap_mirror_get_main();
   vlib_cli_output(vm, "\n");
-  vlib_cli_output(vm, "  idx     tgt-node             dest-taps             tgt_fn\n");
-  vlib_cli_output(vm, " ------  -------------------  --------------------- --------\n");
+  vlib_cli_output(vm, "  idx     tgt-node             dest-taps\n");
+  vlib_cli_output(vm, " ------  -------------------  ---------------------");
   int n = vec_len(xm->contexts);
   for (int i=0; i<n; i++) {
     tap_mirror_context_t *ctx = vec_elt(xm->contexts, i);
     if (!ctx) {
-      vlib_cli_output(vm, "  %3d%5s%-20s %-10s %s\n", i, "", "n/a", "n/a", "n/a");
+      /* vlib_cli_output(vm, "  %3d%5s%-20s %-10s %s\n", i, "", "n/a", "n/a", "n/a"); */
       continue;
     }
 		uint8_t *tap_fds_str = NULL;
 		for (size_t i=0; i<vec_len(ctx->tap_fds); i++)
 			if (ctx->tap_fds[i] > 0)
-			  tap_fds_str = format(tap_fds_str, "%u%s",
-						ctx->tap_fds[i],
+			  tap_fds_str = format(tap_fds_str, "%s%s",
+						vec_elt(ctx->tap_names, i),
 						(i+1)<vec_len(ctx->tap_fds)?",":"");
 
-    vlib_cli_output(vm, "  %3d%5s%-20s %-10s %p\n",
-				i, "", ctx->target_node_name, tap_fds_str, ctx->target_fn);
+    vlib_cli_output(vm, "  %3d%5s%-20s %-10s\n",
+				i, "", ctx->target_node_name, tap_fds_str);
   }
   vlib_cli_output(vm, "\n");
   return 0;
