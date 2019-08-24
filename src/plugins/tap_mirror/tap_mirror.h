@@ -27,6 +27,7 @@ typedef struct {
   vlib_node_function_t *target_fn;
   vlib_node_runtime_t *target_rt;
   uint32_t redirector_node_index;
+	bool request_to_free;
 } tap_mirror_context_t;
 
 typedef struct {

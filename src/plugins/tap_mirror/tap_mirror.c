@@ -82,15 +82,26 @@ tap_mirror_is_enabled (void)
   return !!(xm->flags & TAP_MIRROR_F_ENABLED);
 }
 
-void
-disable_tap_mirror(vlib_main_t *vm,
-  const char *node_name, const char *tap_name)
+static int
+get_tapfd(const char *name)
 {
-	abort();
-  /* tap_mirror_main_t *xm = tap_mirror_get_main(); */
-  /* xm->flags &= ~TAP_MIRROR_F_ENABLED; */
-  /* if (xm->target_rt) */
-  /*   xm->target_rt->function = xm->target_fn; */
+  tap_mirror_main_t *xm = tap_mirror_get_main();
+  for (int i=0; i<vec_len(xm->contexts); i++) {
+    tap_mirror_context_t *ctx = vec_elt(xm->contexts, i);
+    if (!ctx)
+			continue;
+		assert(vec_len(ctx->tap_names) == vec_len(ctx->tap_fds));
+		for (int i=0; i<vec_len(ctx->tap_names); i++) {
+			if (vec_elt(ctx->tap_fds, i) <= 0)
+				continue;
+			uint8_t *name_ = vec_elt(ctx->tap_names, i);
+			uint8_t *name__ = format(0, "%s", name);
+			if (memcmp(name_, name__, strlen(name)) == 0) {
+				return vec_elt(ctx->tap_fds, i);
+			}
+		}
+	}
+	return -1;
 }
 
 static int
@@ -240,6 +251,16 @@ tap_mirror_input_fn (vlib_main_t * vm,
   tap_mirror_main_t *xm = tap_mirror_get_main();
 	tap_mirror_context_t *ctx = vec_elt(xm->contexts, event_type);
 
+	//check request_to_free and free
+	if (ctx->request_to_free) {
+		vlib_node_function_t *fn;
+		fn = ctx->target_fn;
+		ctx->target_rt->function = ctx->target_fn;
+		vec_elt(xm->contexts, event_type) = NULL;
+		clib_mem_free(ctx);
+		return fn(vm, rt, f);
+	}
+
   uint32_t *pkts = vlib_frame_vector_args (f);
   for (uint32_t i = 0; i < f->n_vectors; ++i) {
     uint32_t clones[2];
@@ -328,6 +349,7 @@ get_or_new_tap_mirror_context(const char *node_name)
 				return NULL;
 			}
 
+			ctx->request_to_free = false;
 			ctx->redirector_node_index = redirector_node->index;
 			ctx->target_rt = runtime;
 			ctx->target_fn = runtime->function;
@@ -340,6 +362,21 @@ get_or_new_tap_mirror_context(const char *node_name)
     }
   }
 
+	return NULL;
+}
+
+static tap_mirror_context_t*
+get_tap_mirror_context(tap_mirror_main_t *xm, const char *node_name)
+{
+	//search exist
+  for (int i=0; i<vec_len(xm->contexts); i++) {
+    tap_mirror_context_t *ctx = vec_elt(xm->contexts, i);
+		if (!ctx)
+			continue;
+		if (memcmp(ctx->target_node_name,
+				node_name, strlen(node_name)) == 0)
+			return ctx;
+  }
 	return NULL;
 }
 
@@ -357,6 +394,46 @@ enable_tap_mirror(vlib_main_t *vm,
 	}
 	tap_mirror_context_add_new_tap(ctx, tap_name);
   return 0;
+}
+
+void
+disable_tap_mirror(vlib_main_t *vm,
+  const char *node_name, const char *tap_name)
+{
+	// search ctx
+  tap_mirror_main_t *xm = tap_mirror_get_main();
+	tap_mirror_context_t *ctx = get_tap_mirror_context(xm, node_name);
+	if (!ctx) {
+		vlib_cli_output(vm, "tap-mirror-context not found\n");
+		return;
+	}
+
+	// delete tap-fd
+	int tap_fd = 0;
+	for (int i=0; i<vec_len(ctx->tap_fds); i++) {
+		if (vec_elt(ctx->tap_fds, i) <= 0)
+			continue;
+		if (memcmp(vec_elt(ctx->tap_names, i), tap_name, strlen(tap_name)) == 0) {
+			tap_fd = vec_elt(ctx->tap_fds, i);
+			vec_elt(ctx->tap_fds, i) = -1;
+			vec_elt(ctx->tap_names, i) = NULL;
+		}
+	}
+
+	// if tap referencing node is nothing, close(fd)
+	int exist_fd = get_tapfd(tap_name);
+	if (exist_fd < 0)
+		close(tap_fd);
+
+	// if no tap-fds delete ctx request;
+	size_t cnt = 0;
+	for (int i=0; i<vec_len(ctx->tap_fds); i++) {
+		if (vec_elt(ctx->tap_fds, i) <= 0)
+			continue;
+		cnt ++;
+	}
+	if (cnt == 0)
+		ctx->request_to_free = true;
 }
 
 VLIB_INIT_FUNCTION (tap_mirror_init);
