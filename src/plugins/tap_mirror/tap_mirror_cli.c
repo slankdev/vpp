@@ -74,18 +74,13 @@ show_tap_mirror_fn (vlib_main_t *vm, unformat_input_t *input,
 
   tap_mirror_main_t *xm = tap_mirror_get_main();
   vlib_cli_output(vm, "\n");
-  vlib_cli_output(vm, "Target Node Info\n");
-  vlib_cli_output(vm, " node: %s (org_index=%u, cur_index=%u)\n", xm->node_name, 0, 0);
-  vlib_cli_output(vm, " tap: %s (ifindex=%u)\n", xm->tap_name);
-
-  vlib_cli_output(vm, "\n");
-  vlib_cli_output(vm, "  idx     tgt-node             dest-taps\n");
-  vlib_cli_output(vm, " ------  -------------------  ---------------------\n");
+  vlib_cli_output(vm, "  idx     tgt-node             dest-taps             tgt_fn\n");
+  vlib_cli_output(vm, " ------  -------------------  --------------------- --------\n");
   int n = vec_len(xm->contexts);
   for (int i=0; i<n; i++) {
     tap_mirror_context_t *ctx = vec_elt(xm->contexts, i);
     if (!ctx) {
-      vlib_cli_output(vm, "  %3d%5s%-20s %-10s\n", i, "", "n/a", "n/a");
+      vlib_cli_output(vm, "  %3d%5s%-20s %-10s %s\n", i, "", "n/a", "n/a", "n/a");
       continue;
     }
 		uint8_t *tap_fds_str = NULL;
@@ -93,15 +88,13 @@ show_tap_mirror_fn (vlib_main_t *vm, unformat_input_t *input,
 			if (ctx->tap_fds[i] > 0)
 			  tap_fds_str = format(tap_fds_str, "%u%s",
 						ctx->tap_fds[i], (i+1)<8?",":"");
-    vlib_cli_output(vm, "  %3d%5s%-20s %-10s\n",
-				i, "", ctx->target_node_name, tap_fds_str, ctx);
+    vlib_cli_output(vm, "  %3d%5s%-20s %-10s %p\n",
+				i, "", ctx->target_node_name, tap_fds_str, ctx->target_fn);
   }
   vlib_cli_output(vm, "\n");
   return 0;
 }
 
-// KOKO TODO XXX KOKOKARA
-// SUPPORT MULTI CONTEXT CLI!!!
 clib_error_t *
 set_tap_mirror_fn (vlib_main_t *vm,
     unformat_input_t *input, vlib_cli_command_t *cmd)
@@ -144,10 +137,8 @@ set_tap_mirror_fn (vlib_main_t *vm,
     disable_tap_mirror(vm, node_name, tap_name);
   } else {
     int ret = enable_tap_mirror(vm, node_name, tap_name);
-    if (ret < 0) {
-      disable_tap_mirror(vm, node_name, tap_name);
+    if (ret < 0)
       return clib_error_return (0, "set_tap_mirro failed");
-    }
   }
 
   vec_free(node_name);

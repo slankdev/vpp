@@ -86,15 +86,35 @@ void
 disable_tap_mirror(vlib_main_t *vm,
   const char *node_name, const char *tap_name)
 {
-  tap_mirror_main_t *xm = tap_mirror_get_main();
-  xm->flags &= ~TAP_MIRROR_F_ENABLED;
-  if (xm->target_rt)
-    xm->target_rt->function = xm->target_fn;
+	abort();
+  /* tap_mirror_main_t *xm = tap_mirror_get_main(); */
+  /* xm->flags &= ~TAP_MIRROR_F_ENABLED; */
+  /* if (xm->target_rt) */
+  /*   xm->target_rt->function = xm->target_fn; */
 }
 
 static int
-open_tap_fd(const char *name)
+get_or_open_tapfd(const char *name)
 {
+  tap_mirror_main_t *xm = tap_mirror_get_main();
+  for (int i=0; i<vec_len(xm->contexts); i++) {
+    tap_mirror_context_t *ctx = vec_elt(xm->contexts, i);
+    if (!ctx)
+			continue;
+		assert(vec_len(ctx->tap_names) == vec_len(ctx->tap_fds));
+		for (int i=0; i<vec_len(ctx->tap_names); i++) {
+			if (vec_elt(ctx->tap_fds, i) <= 0)
+				continue;
+			uint8_t *name_ = vec_elt(ctx->tap_names, i);
+			uint8_t *name__ = format(0, "%s", name);
+			if (memcmp(name_, name__, strlen(name)) == 0) {
+				printf("exist. reuse. \n");
+				return vec_elt(ctx->tap_fds, i);
+			}
+		}
+	}
+
+	printf("not exist. alloc. \n");
   int fd = open("/dev/net/tun", O_RDWR|O_NONBLOCK);
   if (fd < 0) {
     //"%s: failed. open tap-fd\n"
@@ -153,7 +173,6 @@ tap_mirror_init (vlib_main_t *vm)
   tap_mirror_main_t * mmp = tap_mirror_get_main();
   mmp->vlib_main = vm;
   mmp->vnet_main = vnet_get_main();
-  mmp->tap_fd = -1;
 
   uint8_t * name = format (0, "tap_mirror_%08x%c", api_version, 0);
   mmp->msg_id_base = vl_msg_api_get_msg_ids
@@ -187,9 +206,10 @@ tap_mirror_input_fn (vlib_main_t * vm,
   vlib_node_t *node = vlib_get_node(vm, rt->node_index);
 	const char* name = (const char*)node->name;
 	int event_type = get_event_type(name);
-  vlib_cli_output(vm, "mirror from %s type=%d\n", name, event_type);
-
+  /* vlib_cli_output(vm, "mirror from %s type=%d\n", name, event_type); */
   tap_mirror_main_t *xm = tap_mirror_get_main();
+	tap_mirror_context_t *ctx = vec_elt(xm->contexts, event_type);
+
   uint32_t *pkts = vlib_frame_vector_args (f);
   for (uint32_t i = 0; i < f->n_vectors; ++i) {
     uint32_t clones[2];
@@ -197,25 +217,59 @@ tap_mirror_input_fn (vlib_main_t * vm,
         pkts[i], clones, 2, VLIB_BUFFER_CLONE_HEAD_SIZE);
     assert(n_cloned == 2);
     vlib_process_signal_event_mt(vm,
-	      xm->redirector_node_index,
+	      ctx->redirector_node_index,
         event_type, clones[1]);
   }
-  return xm->target_fn(vm, rt, f);
+  return ctx->target_fn(vm, rt, f);
+}
+
+static uint64_t
+tap_mirror_redirector_fn (vlib_main_t *vm, vlib_node_runtime_t *rt, vlib_frame_t *f)
+{
+  uint64_t *event_data = 0;
+  tap_mirror_main_t *xm = tap_mirror_get_main();
+  while (true) {
+
+    /* printf("%s:%d\n", __func__, __LINE__); */
+    vlib_process_wait_for_event_or_clock(vm, 1.0);
+    uint64_t event_type = vlib_process_get_events (vm, &event_data);
+    switch (event_type) {
+			case -1UL: break;
+      default:
+			{
+			  /* printf("%s: recv unknown event %lu\n", __func__, event_type); */
+				tap_mirror_context_t *ctx = vec_elt(xm->contexts, event_type);
+				for (int i=0; i<vec_len(ctx->tap_fds); i++) {
+					int tap_fd = vec_elt(ctx->tap_fds, i);
+					if (tap_fd <= 0)
+						continue;
+
+					uint64_t buffer_index = *event_data;
+					vlib_buffer_t *b = vlib_get_buffer (vm, buffer_index);
+					vlib_buffer_advance (b, -b->current_data);
+
+					write(tap_fd,
+							vlib_buffer_get_current(b),
+						  vlib_buffer_length_in_chain(vm, b));
+					vlib_buffer_free_one (vm, buffer_index);
+				}
+
+	      break;
+			}
+    }
+
+    //printf("%s:%d\n", __func__, __LINE__);
+    vec_reset_length(event_data);
+    vlib_process_suspend (vm, 0 /* secs */ );
+  }
+  return 0;
 }
 
 int
 enable_tap_mirror(vlib_main_t *vm,
   const char *node_name, const char *tap_name)
 {
-  if (tap_mirror_is_enabled()) {
-    vlib_cli_output (vm, "%s: failed. already enabled\n", __func__);
-    return -1;
-  }
-
   tap_mirror_main_t *xm = tap_mirror_get_main();
-  snprintf(xm->node_name, sizeof(xm->node_name), "%s", node_name);
-  snprintf(xm->tap_name, sizeof(xm->tap_name), "%s", tap_name);
-
   uint8_t *str_ptr = format(0, "%s", node_name);
   vlib_node_t *node = vlib_get_node_by_name(vlib_get_main(), str_ptr);
   vlib_node_runtime_t *runtime = node ?
@@ -227,29 +281,36 @@ enable_tap_mirror(vlib_main_t *vm,
     return -2;
   }
 
-  assert(xm->tap_fd <= 0);
-  xm->tap_fd = open_tap_fd(tap_name);
-  set_link_up_down(tap_name, true);
-
   vlib_node_t *redirector_node =
        vlib_get_node_by_name(vm,
        (uint8_t*)"tap-mirror-redirector");
-
   xm->flags |= TAP_MIRROR_F_ENABLED;
-  xm->redirector_node_index = redirector_node->index;
-  xm->target_rt = runtime;
-  xm->target_fn = runtime->function;
-  runtime->function = tap_mirror_input_fn;
 
 	bool create_successfully = false;
   for (int i=0; i<vec_len(xm->contexts); i++) {
     tap_mirror_context_t *ctx = vec_elt(xm->contexts, i);
     if (!ctx) {
+
+			int tap_fd = get_or_open_tapfd(tap_name);
+			if (tap_fd < 0) {
+				printf("OKASHII\n");
+			}
+			printf("new tap-fd:%d\n", tap_fd);
+			set_link_up_down(tap_name, true);
+
 			ctx = clib_mem_alloc(sizeof(tap_mirror_context_t));
 			memset(ctx, 0, sizeof(tap_mirror_context_t));
 			ctx->target_node_name = format(0, "%s", node_name);
+
+			ctx->redirector_node_index = redirector_node->index;
+			ctx->target_rt = runtime;
+			ctx->target_fn = runtime->function;
+			runtime->function = tap_mirror_input_fn;
+
 			vec_validate(ctx->tap_fds, 8);
-			vec_add1(ctx->tap_fds, xm->tap_fd);
+			vec_validate(ctx->tap_names, 8);
+			vec_add1(ctx->tap_fds, tap_fd);
+			vec_add1(ctx->tap_names, format(0, "%s", tap_name));
 			vec_elt(xm->contexts, i) = ctx;
 			create_successfully = true;
 			break;
@@ -270,51 +331,6 @@ VNET_FEATURE_INIT (tap_mirror, static) =
   .node_name = "tap-mirror",
   .runs_after = VNET_FEATURES ("ethernet-input"),
 };
-
-static uint64_t
-tap_mirror_redirector_fn (vlib_main_t *vm, vlib_node_runtime_t *rt, vlib_frame_t *f)
-{
-  uint64_t *event_data = 0;
-  tap_mirror_main_t *xm = tap_mirror_get_main();
-  while (true) {
-
-    //printf("%s:%d\n", __func__, __LINE__);
-    vlib_process_wait_for_event_or_clock(vm, 1.0);
-    uint64_t event_type = vlib_process_get_events (vm, &event_data);
-    switch (event_type) {
-			case -1UL: break;
-      default:
-			{
-			  printf("recv unknown event %lu\n", event_type);
-				tap_mirror_context_t *ctx = vec_elt(xm->contexts, event_type);
-				for (int i=0; i<vec_len(ctx->tap_fds); i++) {
-					int tap_fd = vec_elt(ctx->tap_fds, i);
-					if (tap_fd <= 0)
-						continue;
-					printf("send to fd=%d\n", tap_fd);
-					uint64_t buffer_index = *event_data;
-					vlib_buffer_t *b = vlib_get_buffer (vm, buffer_index);
-					vlib_buffer_advance (b, -b->current_data);
-					write(xm->tap_fd, vlib_buffer_get_current(b),
-						vlib_buffer_length_in_chain(vm, b));
-					vlib_buffer_free_one (vm, buffer_index);
-				}
-
-	      break;
-			}
-    }
-
-    //printf("%s:%d\n", __func__, __LINE__);
-    vec_reset_length(event_data);
-    vlib_process_suspend (vm, 0 /* secs */ );
-
-    if (!tap_mirror_is_enabled()) {
-      close(xm->tap_fd);
-      xm->tap_fd = -1;
-    }
-  }
-  return 0;
-}
 
 VLIB_REGISTER_NODE (tap_mirror_redirector, static) = {
   .function = tap_mirror_redirector_fn,

@@ -23,6 +23,10 @@
 typedef struct {
   uint8_t *target_node_name;
   int *tap_fds;
+	uint8_t **tap_names;
+  vlib_node_function_t *target_fn;
+  vlib_node_runtime_t *target_rt;
+  uint32_t redirector_node_index;
 } tap_mirror_context_t;
 
 typedef struct {
@@ -33,12 +37,6 @@ typedef struct {
 #define TAP_MIRROR_F_ENABLED        (1U << 0)
   uint32_t flags;
 
-  char node_name[256];
-  char tap_name[256];
-  int tap_fd;
-  uint32_t redirector_node_index;
-  vlib_node_function_t *target_fn;
-  vlib_node_runtime_t *target_rt;
   tap_mirror_context_t **contexts;
 } tap_mirror_main_t;
 
